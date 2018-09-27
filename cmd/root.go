@@ -26,6 +26,7 @@ var rootCmd = &cobra.Command{
 		cm.Stderr = os.Stderr
 		if err := cm.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
 		}
 	},
 }
