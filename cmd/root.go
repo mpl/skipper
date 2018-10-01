@@ -10,7 +10,19 @@ import (
 	"github.com/spf13/viper"
 )
 
-var cfgFile string
+var (
+	cfgFile string
+	buildID string
+)
+
+// Skipper needs to be run with a -i <buildId>. If that flag wasn't set, we spawn a child skipper process with that flag.
+
+func childSkipperArgs(buildID string, args []string) []string {
+	i := 1
+	args = append(args[:i], append([]string{"-i", buildID}, args[i:]...)...)
+
+	return args
+}
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -43,13 +55,8 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.skipper.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
+	rootCmd.PersistentFlags().StringVar(&buildID, "i", "", "ID for this build. If empty, it looks for a /yourbase file with a build ID otherwise it creates one with a random build ID. Once a build ID is determined, skipper spawns a child process of itself but passing -i <id> accordingly")
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
