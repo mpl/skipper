@@ -2,10 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
+	"math/rand"
 	"os"
 	"os/exec"
+	"strings"
+	"time"
 
 	homedir "github.com/mitchellh/go-homedir"
+	"github.com/oklog/ulid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -15,13 +21,57 @@ var (
 	buildID string
 )
 
-// Skipper needs to be run with a -i <buildId>. If that flag wasn't set, we spawn a child skipper process with that flag.
+// Skipper needs to be run with a --id <buildId>. If that flag wasn't set, we spawn a child skipper process with that flag.
 
 func childSkipperArgs(buildID string, args []string) []string {
 	i := 1
-	args = append(args[:i], append([]string{"-i", buildID}, args[i:]...)...)
-
+	args = append(args[:i], append([]string{"--id", buildID}, args[i:]...)...)
 	return args
+}
+
+// buildULID is *not* safe for concurrent use because of math/rand.
+func newBuildULID() (string, error) {
+
+	t := time.Now()
+	entropy := ulid.Monotonic(rand.New(rand.NewSource(t.UnixNano())), 0)
+	id, err := ulid.New(ulid.Timestamp(t), entropy)
+	if err != nil {
+		return "", err
+	}
+	return id.String(), nil
+}
+
+const buildIDFilePath = "~/yourbase.txt"
+
+// buildULIDFromFile looks for a /yourbase file and check if it contains an
+// ULID. If it contains anything but an ULID, it's an error. If the file
+// doesn't exist or it's empty, returns an empty ULID and nil error.
+func buildULIDFromFile() (string, error) {
+	f, err := homedir.Expand(buildIDFilePath)
+	if err != nil {
+		return "", err
+	}
+	content, err := ioutil.ReadFile(f)
+	if os.IsNotExist(err) || len(content) == 0 {
+		return "", nil
+	}
+	// TrimSpace to avoid confusion during manual testing.
+	return strings.TrimSpace(string(content)), nil
+}
+
+func saveBuildULID(id string) error {
+	fp, err := homedir.Expand(buildIDFilePath)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(fp, os.O_TRUNC|os.O_RDWR|os.O_CREATE, 0700)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	// No trailing newline, makes things simpler for programs.
+	_, err = io.WriteString(f, id)
+	return err
 }
 
 // rootCmd represents the base command when called without any subcommands
@@ -32,6 +82,35 @@ var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			return
+		}
+
+		// If we have trouble fork-bombing ourselves, we can add a
+		// check to look at the parent process of the current process
+		// and refusing to call skipper again if the parent process is
+		// already a skipper. I don't expect that to happen unless we
+		// mess-up on the flag-passing + flag-parsing logic.
+		if buildID == "" {
+			// TODO: Inspect /yourbase file first. Also update it otherwise.
+			id, err := buildULIDFromFile()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Unexpected error reading from %v: %v\n", buildIDFilePath, err)
+				os.Exit(1)
+			}
+			if id == "" {
+				id, err = newBuildULID()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Could not create a new build ID: %v", err)
+					os.Exit(1)
+				}
+				if err = saveBuildULID(id); err != nil {
+					fmt.Fprintf(os.Stderr, "Could not save build ULID to %v: %v", buildIDFilePath, err)
+					os.Exit(1)
+				}
+			}
+			// TODO: Write to buildULIDFilePath.
+
+			// os.Args, not args because args is incomplete for us.
+			args = childSkipperArgs(id, os.Args)
 		}
 		cm := exec.Command(args[0], args[1:]...)
 		cm.Stdout = os.Stdout
@@ -56,7 +135,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.skipper.yaml)")
-	rootCmd.PersistentFlags().StringVar(&buildID, "i", "", "ID for this build. If empty, it looks for a /yourbase file with a build ID otherwise it creates one with a random build ID. Once a build ID is determined, skipper spawns a child process of itself but passing -i <id> accordingly")
+	rootCmd.PersistentFlags().StringVar(&buildID, "id", "", "ID for this build. If empty, it looks for a /yourbase file with a build ID otherwise it creates one with a random build ID. Once a build ID is determined, skipper spawns a child process of itself but passing --id <id> accordingly")
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
