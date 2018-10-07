@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bufio"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -14,6 +16,8 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/yourbase/skipper/builddata"
+	"github.com/yourbase/skipper/stepselection"
 )
 
 var (
@@ -112,13 +116,29 @@ var rootCmd = &cobra.Command{
 			// os.Args, not args because args is incomplete for us.
 			args = childSkipperArgs(id, os.Args)
 		}
-		cm := exec.Command(args[0], args[1:]...)
-		cm.Stdout = os.Stdout
-		cm.Stderr = os.Stderr
-		if err := cm.Run(); err != nil {
+		// TODO: is there a better moment to create this? Perhaps if the skipper becomes noticeably slow,
+		// we can move steps like this to asynchronous ones.
+		// FIXME: these aren't working yet.
+		skipCheck, err := newStepSkipper("/changes", "/base-graph")
+		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
+		shouldRun, err := skipCheck.shouldRun(strings.Join(args, " "))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		if shouldRun {
+			cm := exec.Command(args[0], args[1:]...)
+			cm.Stdout = os.Stdout
+			cm.Stderr = os.Stderr
+			if err := cm.Run(); err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
+		}
+		// Skipping..
 	},
 }
 
@@ -163,4 +183,57 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Println("Using config file:", viper.ConfigFileUsed())
 	}
+}
+
+func updatedNodes(filePath string) (map[string]bool, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	m := map[string]bool{}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		m[scanner.Text()] = true
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+type stepSkipper struct {
+	buildLog     io.ReadCloser
+	buildReport  *csv.Reader
+	updatedNodes map[string]bool
+}
+
+func (s *stepSkipper) Close() {
+	s.buildLog.Close()
+}
+
+func newStepSkipper(logFile string, upFile string) (*stepSkipper, error) {
+	buildLog, err := builddata.OpenFile(logFile)
+	if err != nil {
+		return nil, err
+	}
+
+	buildReport := csv.NewReader(buildLog)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedNodes, err := updatedNodes(upFile)
+	if err != nil {
+		return nil, err
+	}
+	return &stepSkipper{
+		buildLog:     buildLog,
+		buildReport:  buildReport,
+		updatedNodes: updatedNodes,
+	}, nil
+}
+
+func (s *stepSkipper) shouldRun(stepName string) (bool, err) {
+	return stepselection.ShouldRunStep(s.buildReport, s.updatedNodes, stepName)
 }
