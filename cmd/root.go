@@ -116,20 +116,7 @@ var rootCmd = &cobra.Command{
 			// os.Args, not args because args is incomplete for us.
 			args = childSkipperArgs(id, os.Args)
 		}
-		// TODO: is there a better moment to create this? Perhaps if the skipper becomes noticeably slow,
-		// we can move steps like this to asynchronous ones.
-		// FIXME: these aren't working yet.
-		skipCheck, err := newStepSkipper("/changes", "/base-graph")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-		shouldRun, err := skipCheck.shouldRun(strings.Join(args, " "))
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-		if shouldRun {
+		run := func() {
 			cm := exec.Command(args[0], args[1:]...)
 			cm.Stdout = os.Stdout
 			cm.Stderr = os.Stderr
@@ -138,7 +125,24 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		}
-		// Skipping..
+		// TODO(nictuku): is there a better moment to create this?
+		// Perhaps if the skipper becomes noticeably slow, we can move
+		// steps like this to asynchronous ones.
+		skipCheck, err := newStepSkipper("/changes", "/base-graph")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			run()
+			return
+		}
+		shouldRun, err := skipCheck.shouldRun(strings.Join(args, " "))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		if shouldRun {
+			run()
+			return
+		}
 	},
 }
 
@@ -234,6 +238,6 @@ func newStepSkipper(logFile string, upFile string) (*stepSkipper, error) {
 	}, nil
 }
 
-func (s *stepSkipper) shouldRun(stepName string) (bool, err) {
+func (s *stepSkipper) shouldRun(stepName string) (bool, error) {
 	return stepselection.ShouldRunStep(s.buildReport, s.updatedNodes, stepName)
 }
