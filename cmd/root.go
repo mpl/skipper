@@ -131,18 +131,24 @@ var rootCmd = &cobra.Command{
 		skipCheck, err := newStepSkipper("/changes", "/base-graph")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
+			fmt.Println("skipper setup failure. Falling back to running")
 			run()
 			return
 		}
 		shouldRun, err := skipCheck.shouldRun(strings.Join(args, " "))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-		if shouldRun {
+			fmt.Println("skipper shouldRun failure. Falling back to running")
 			run()
 			return
 		}
+		if shouldRun {
+			fmt.Println("skipper decided we should run")
+			run()
+			return
+		}
+		fmt.Println("skipper decided we should skip!")
+		return
 	},
 }
 
