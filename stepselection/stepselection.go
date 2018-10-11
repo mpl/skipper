@@ -26,6 +26,9 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 		return true, nil
 	}
 	// TODO speed: This is n^2 currently, but it could be much faster.
+
+	stepSeen := false
+
 	for {
 		rr, err = buildReport.Read()
 		if err != nil {
@@ -46,11 +49,18 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 		if step != stepName {
 			continue
 		}
+		stepSeen = true
 		for f := range updatedNodes {
 			if strings.HasPrefix(f, node) {
 				return true, nil
 			}
 		}
+	}
+	if !stepSeen {
+		// If there are no nodes in the build graph that match with the
+		// step being checked, then it's a new step it should be run.
+		fmt.Fprintf(os.Stderr, "Step %q appears to be new. Falling back to running it\n", stepName)
+		return true, nil
 	}
 
 	return false, nil
