@@ -35,8 +35,8 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 			return true, err
 		}
 		if len(rr) != 3 {
-			fmt.Fprintf(os.Stderr, "Unexpected format for csv record: %#v\n", rr)
-			continue
+			fmt.Fprintf(os.Stderr, "Unexpected format for csv record (%#v). Falling back to running steps\n", rr)
+			return true, nil
 		}
 
 		step, _, node := cleanStepName(rr[0]), rr[1], rr[2]
