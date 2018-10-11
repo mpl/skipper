@@ -28,6 +28,7 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 	// TODO speed: This is n^2 currently, but it could be much faster.
 
 	stepSeen := false
+	stepName = cleanStepName(stepName)
 
 	for {
 		rr, err = buildReport.Read()
