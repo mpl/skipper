@@ -21,6 +21,10 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 		rr  []string
 		err error
 	)
+	if len(updatedNodes) == 0 {
+		fmt.Fprintf(os.Stderr, "skipper got an empty change set\n")
+		return true, nil
+	}
 	// TODO speed: This is n^2 currently, but it could be much faster.
 	for {
 		rr, err = buildReport.Read()
@@ -31,7 +35,7 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 			return true, err
 		}
 		if len(rr) != 3 {
-			fmt.Fprintf(os.Stderr, "Unexpected format for csv record: %#v", rr)
+			fmt.Fprintf(os.Stderr, "Unexpected format for csv record: %#v\n", rr)
 			continue
 		}
 
