@@ -212,6 +212,8 @@ func updatedNodes(filePath string) (map[string]bool, error) {
 	return m, nil
 }
 
+// TODO(nictuku): Move this to stepselection.
+
 type stepSkipper struct {
 	buildLog     io.ReadCloser
 	buildReport  *csv.Reader
@@ -232,6 +234,7 @@ func newStepSkipper(logFile string, upFile string) (*stepSkipper, error) {
 	if err != nil {
 		return nil, err
 	}
+	buildReport.LazyQuotes = true
 
 	updatedNodes, err := updatedNodes(upFile)
 	if err != nil {
