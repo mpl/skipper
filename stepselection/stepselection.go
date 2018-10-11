@@ -32,10 +32,13 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 			if err == io.EOF {
 				break
 			}
+			// Sometimes helpful data is put in the read record
+			// even though an error happens, so we print it here.
+			fmt.Fprintf(os.Stderr, "Could not parse record (%#v). Falling back to running steps\n", rr)
 			return true, err
 		}
 		if len(rr) != 3 {
-			fmt.Fprintf(os.Stderr, "Unexpected format for csv record (%#v). Falling back to running steps\n", rr)
+			fmt.Fprintf(os.Stderr, "Unexpected format for record (%#v). Falling back to running steps\n", rr)
 			return true, nil
 		}
 
