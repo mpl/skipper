@@ -88,12 +88,14 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
+		parentSkipper := false
 		// If we have trouble fork-bombing ourselves, we can add a
 		// check to look at the parent process of the current process
 		// and refusing to call skipper again if the parent process is
 		// already a skipper. I don't expect that to happen unless we
 		// mess-up on the flag-passing + flag-parsing logic.
 		if buildID == "" {
+			parentSkipper = true
 			// TODO: Inspect /yourbase file first. Also update it otherwise.
 			id, err := buildULIDFromFile()
 			if err != nil {
@@ -124,6 +126,10 @@ var rootCmd = &cobra.Command{
 				fmt.Fprintln(os.Stderr, err.Error())
 				os.Exit(1)
 			}
+		}
+		if parentSkipper {
+			run()
+			return
 		}
 		// TODO(nictuku): is there a better moment to create this?
 		// Perhaps if the skipper becomes noticeably slow, we can move
