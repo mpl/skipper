@@ -128,7 +128,7 @@ var rootCmd = &cobra.Command{
 		// TODO(nictuku): is there a better moment to create this?
 		// Perhaps if the skipper becomes noticeably slow, we can move
 		// steps like this to asynchronous ones.
-		skipCheck, err := newStepSkipper("/base-graph", "/changes")
+		skipCheck, err := newStepSkipper("/base-graph.gz", "/changes")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			fmt.Println("skipper setup failure. Falling back to running")
