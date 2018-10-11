@@ -135,7 +135,8 @@ var rootCmd = &cobra.Command{
 			run()
 			return
 		}
-		shouldRun, err := skipCheck.shouldRun(strings.Join(args, " "))
+		stepName := strings.Join(args, " ")
+		shouldRun, err := skipCheck.shouldRun(stepName)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			fmt.Println("skipper shouldRun failure. Falling back to running")
@@ -147,7 +148,7 @@ var rootCmd = &cobra.Command{
 			run()
 			return
 		}
-		fmt.Println("skipper decided we should skip!")
+		fmt.Printf("skipper decided we should skip: %q\n", stepName)
 		return
 	},
 }
