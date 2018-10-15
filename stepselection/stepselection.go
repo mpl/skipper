@@ -12,7 +12,7 @@ import (
 
 var re = regexp.MustCompile("^skipper (?:--id [^ ]+ )?-- ")
 
-func cleanStepName(s string) string {
+func StepFromSkipperArgs(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
@@ -28,7 +28,7 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 	// TODO speed: This is n^2 currently, but it could be much faster.
 
 	stepSeen := false
-	stepName = cleanStepName(stepName)
+	stepName = StepFromSkipperArgs(stepName)
 
 	for {
 		rr, err = buildReport.Read()
@@ -46,7 +46,7 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 			return true, nil
 		}
 
-		step, _, node := cleanStepName(rr[0]), rr[1], rr[2]
+		step, _, node := StepFromSkipperArgs(rr[0]), rr[1], rr[2]
 		if step != stepName {
 			continue
 		}
