@@ -136,8 +136,11 @@ var rootCmd = &cobra.Command{
 		// steps like this to asynchronous ones.
 		skipCheck, err := newStepSkipper("/base-graph.gz", "/changes")
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			fmt.Println("skipper setup failure. Falling back to running")
+			if os.IsNotExist(err) {
+				fmt.Println("skipper running because the base dependency graph is missing.")
+			} else {
+				fmt.Fprintf(os.Stderr, err.Error())
+			}
 			run()
 			return
 		}
