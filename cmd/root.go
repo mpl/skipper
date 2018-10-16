@@ -105,11 +105,11 @@ var rootCmd = &cobra.Command{
 			if id == "" {
 				id, err = newBuildULID()
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Could not create a new build ID: %v", err)
+					fmt.Fprintf(os.Stderr, "Could not create a new build ID: %v\n", err)
 					os.Exit(1)
 				}
 				if err = saveBuildULID(id); err != nil {
-					fmt.Fprintf(os.Stderr, "Could not save build ULID to %v: %v", buildIDFilePath, err)
+					fmt.Fprintf(os.Stderr, "Could not save build ULID to %v: %v\n", buildIDFilePath, err)
 					os.Exit(1)
 				}
 			}
@@ -134,30 +134,30 @@ var rootCmd = &cobra.Command{
 		// TODO(nictuku): is there a better moment to create this?
 		// Perhaps if the skipper becomes noticeably slow, we can move
 		// steps like this to asynchronous ones.
+		stepName := strings.Join(args, " ")
 		skipCheck, err := newStepSkipper("/base-graph.gz", "/changes")
 		if err != nil {
 			if os.IsNotExist(err) {
-				fmt.Println("skipper running because the base dependency graph is missing")
+				fmt.Printf("skipper: defaulting to running command %q because the base dependency graph is missing\n", stepName)
 			} else {
-				fmt.Fprintf(os.Stderr, err.Error())
+				fmt.Fprintf(os.Stderr, "skipper: defaulting to running command %q because could not open base dependency graph: %v\n", stepName, err)
 			}
 			run()
 			return
 		}
-		stepName := strings.Join(args, " ")
 		shouldRun, err := skipCheck.shouldRun(stepName)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			fmt.Println("skipper shouldRun failure. Falling back to running")
+			fmt.Printf("skipper: could not decide if we should run %q. Falling back to running\n", stepName)
 			run()
 			return
 		}
 		if shouldRun {
-			fmt.Println("skipper decided we should run")
+			fmt.Printf("skipper: decided that we should run: %q\n", stepName)
 			run()
 			return
 		}
-		fmt.Printf("skipper decided we should skip: %q\n", stepName)
+		fmt.Printf("skipper: decided we should skip: %q\n", stepName)
 		return
 	},
 }

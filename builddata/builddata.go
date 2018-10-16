@@ -18,7 +18,7 @@ func OpenFile(file string) (io.ReadCloser, error) {
 	)
 	f, err = os.Open(file)
 	if err != nil {
-		return nil, fmt.Errorf("Could not open log file %v: %v", file, err)
+		return nil, err
 	}
 	// I tried using gzip.NewReader + gzip.ErrHeader to find if the file is not a gzip, didn't quite work.
 	// Using the extension is probably OK and predictable enough.
