@@ -137,7 +137,7 @@ var rootCmd = &cobra.Command{
 		skipCheck, err := newStepSkipper("/base-graph.gz", "/changes")
 		if err != nil {
 			if os.IsNotExist(err) {
-				fmt.Println("skipper running because the base dependency graph is missing.")
+				fmt.Println("skipper running because the base dependency graph is missing")
 			} else {
 				fmt.Fprintf(os.Stderr, err.Error())
 			}
