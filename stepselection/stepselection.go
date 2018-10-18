@@ -16,6 +16,62 @@ func StepFromSkipperArgs(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
+type step struct {
+	readFiles    map[string]bool
+	writtenFiles map[string]bool
+}
+
+type DependencyGraph struct {
+	steps map[string]*step
+}
+
+func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
+	g := &DependencyGraph{
+		steps: map[string]*step{},
+	}
+	var (
+		rr  []string
+		err error
+	)
+
+	for {
+		rr, err = buildReport.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			// Sometimes helpful data is put in the read record
+			// even though an error happens, so we show it here.
+			return nil, fmt.Errorf("Could not parse record (%#v)", rr)
+		}
+		if len(rr) != 3 {
+			return nil, fmt.Errorf("Unexpected format for record (%#v)", rr)
+		}
+
+		stepName, mode, node := StepFromSkipperArgs(rr[0]), rr[1], rr[2]
+		s, ok := g.steps[stepName]
+		if !ok {
+			s = &step{readFiles: map[string]bool{},
+				writtenFiles: map[string]bool{}}
+		}
+		if mode == "R" {
+			s.readFiles[node] = true
+		} else {
+			s.writtenFiles[node] = true
+		}
+		fmt.Println("step", s, stepName)
+		g.steps[stepName] = s
+	}
+	return g, nil
+}
+
+func (g *DependencyGraph) String() string {
+	for name, step := range g.steps {
+		fmt.Println(name, step.readFiles, step.writtenFiles)
+	}
+	return fmt.Sprintf("graph with %d steps", len(g.steps))
+}
+
 func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepName string) (bool, error) {
 	var (
 		rr  []string
@@ -47,12 +103,17 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 		}
 
 		step, _, node := StepFromSkipperArgs(rr[0]), rr[1], rr[2]
+		fmt.Printf("%q == %q ?\n", step, stepName)
 		if step != stepName {
 			continue
 		}
 		stepSeen = true
 		for f := range updatedNodes {
+			// TODO(nictuku): Use full paths for the check.
+			// Requires tracking the cwd of processes in the
+			// buildsnoop.
 			if strings.HasPrefix(f, node) {
+				fmt.Println("prefix", f, node)
 				return true, nil
 			}
 		}
