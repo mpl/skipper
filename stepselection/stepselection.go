@@ -59,7 +59,7 @@ func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 		} else {
 			s.writtenFiles[node] = true
 		}
-		fmt.Println("step", s, stepName)
+		// fmt.Println("step", s, stepName)
 		g.steps[stepName] = s
 	}
 	return g, nil
@@ -72,6 +72,34 @@ func (g *DependencyGraph) String() string {
 	return fmt.Sprintf("graph with %d steps", len(g.steps))
 }
 
+// StepDependsOnFile returns true if the stepName depends on filePath, directly
+// or indirectly.
+func (g *DependencyGraph) StepDependsOnFile(stepName string, filePath string) (bool, error) {
+	// TODO(nictuku): Make it faster. This is a naive implementation that
+	// does a DFS over the dependency graph. If there is no match it will
+	// end up reading the *entire* graph. The input is a single file and a
+	// single step, but we'll have to repeat this for every file being
+	// updated in the current change, and for every step in the build, so
+	// this is super slow. The goal right now is to make it work.
+	//
+	// Possible way to make this fast without using a lot of memory:
+	// keep maps or bloomfilters of files for each step, including all
+	// transitive dependencies.
+
+	step, ok := g.steps[stepName]
+	if !ok {
+		return false, fmt.Errorf("unknown step: %v", stepName)
+	}
+	if step.readFiles[filePath] {
+		return true, nil
+	}
+	if step.writtenFiles[filePath] {
+		return true, nil
+	}
+	return false, nil
+}
+
+// TODO: This is an older, simpler implementation. To be replaced with DependencyGraph and its methods.
 func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepName string) (bool, error) {
 	var (
 		rr  []string
