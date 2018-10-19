@@ -17,17 +17,18 @@ func StepFromSkipperArgs(s string) string {
 }
 
 type step struct {
-	readFiles    map[string]bool
-	writtenFiles map[string]bool
+	readFiles map[string]bool
 }
 
 type DependencyGraph struct {
-	steps map[string]*step
+	steps       map[string]*step
+	fileWriters map[string][]*step
 }
 
 func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 	g := &DependencyGraph{
-		steps: map[string]*step{},
+		steps:       map[string]*step{},
+		fileWriters: map[string][]*step{},
 	}
 	var (
 		rr  []string
@@ -51,13 +52,12 @@ func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 		stepName, mode, node := StepFromSkipperArgs(rr[0]), rr[1], rr[2]
 		s, ok := g.steps[stepName]
 		if !ok {
-			s = &step{readFiles: map[string]bool{},
-				writtenFiles: map[string]bool{}}
+			s = &step{readFiles: map[string]bool{}}
 		}
 		if mode == "R" {
 			s.readFiles[node] = true
 		} else {
-			s.writtenFiles[node] = true
+			g.fileWriters[node] = append(g.fileWriters[node], s)
 		}
 		// fmt.Println("step", s, stepName)
 		g.steps[stepName] = s
@@ -66,35 +66,60 @@ func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 }
 
 func (g *DependencyGraph) String() string {
-	for name, step := range g.steps {
-		fmt.Println(name, step.readFiles, step.writtenFiles)
-	}
 	return fmt.Sprintf("graph with %d steps", len(g.steps))
+}
+
+func (g *DependencyGraph) fileDeps(filePath string) []string {
+	var files []string
+	for _, step := range g.fileWriters[filePath] {
+		for file := range step.readFiles {
+			files = append(files, file)
+			files = append(files, g.fileDeps(file)...)
+		}
+	}
+	return files
 }
 
 // StepDependsOnFile returns true if the stepName depends on filePath, directly
 // or indirectly.
 func (g *DependencyGraph) StepDependsOnFile(stepName string, filePath string) (bool, error) {
-	// TODO(nictuku): Make it faster. This is a naive implementation that
-	// does a DFS over the dependency graph. If there is no match it will
-	// end up reading the *entire* graph. The input is a single file and a
-	// single step, but we'll have to repeat this for every file being
-	// updated in the current change, and for every step in the build, so
-	// this is super slow. The goal right now is to make it work.
+	// Assume the following build log in format "StepName, FilePath, Mode":
+	// step1,F1,R
+	// step1,F2,W
+	// step2,F2,R
+	// step2,F3,W
+	// step3,F3,R
 	//
-	// Possible way to make this fast without using a lot of memory:
-	// keep maps or bloomfilters of files for each step, including all
-	// transitive dependencies.
+	// We want to be able to say "true" when asked if step3 depends
+	// (transitively) on F1.
+	//
+	// This implementation assumes there are no loops.
+	//
+	// A step depends on a file F if the step has read from F or if it
+	// depends on another step who read from F.
+	// A step A depends on step B if the files that A reads have been
+	// written to by B or have been written by a step that B depends upon.
+	//
+	// We just need to store:
+	// - what files each step has read
+	// - what steps have written to a given file
+	//
+	// We are using maps, but could switch to more efficient structures
+	// if/when the number of files we track becomes too large.
 
 	step, ok := g.steps[stepName]
 	if !ok {
 		return false, fmt.Errorf("unknown step: %v", stepName)
 	}
-	if step.readFiles[filePath] {
-		return true, nil
-	}
-	if step.writtenFiles[filePath] {
-		return true, nil
+	for f := range step.readFiles {
+		if f == filePath {
+			return true, nil
+		}
+		for _, f2 := range g.fileDeps(f) {
+			if f2 == filePath {
+				return true, nil
+			}
+		}
 	}
 	return false, nil
 }
