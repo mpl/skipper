@@ -21,8 +21,10 @@ import (
 )
 
 var (
-	cfgFileFlag string
-	buildIDFlag string
+	cfgFileFlag     string
+	buildIDFlag     string
+	graphFileFlag   string
+	changesFileFlag string
 )
 
 // Skipper needs to be run with a --id <buildId>. If that flag wasn't set, we spawn a child skipper process with that flag.
@@ -45,6 +47,11 @@ func newBuildULID() (string, error) {
 	return id.String(), nil
 }
 
+// TODO(nictuku): I don't recall why this is ~/yourbase.txt and not
+// /yourbase.txt like the others. Move it?
+// I don't love the .txt extension but I didn't want to use /yourbase because
+// that would prevent us from having a directory with that name.
+// Also this should probably be set in the flag definition and not here.
 const buildIDFilePath = "~/yourbase.txt"
 
 // buildULIDFromFile looks for a /yourbase file and check if it contains an
@@ -135,7 +142,7 @@ var rootCmd = &cobra.Command{
 		// Perhaps if the skipper becomes noticeably slow, we can move
 		// steps like this to asynchronous ones.
 		stepName := strings.Join(args, " ")
-		skipCheck, err := newStepSkipper("/base-graph.gz", "/changes")
+		skipCheck, err := newStepSkipper(graphFileFlag, changesFileFlag)
 		if err != nil {
 			if os.IsNotExist(err) {
 				fmt.Printf("skipper: defaulting to running command %q because the base dependency graph is missing\n", stepName)
@@ -176,7 +183,8 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFileFlag, "config", "", "config file (default is $HOME/.skipper.yaml)")
 	rootCmd.PersistentFlags().StringVar(&buildIDFlag, "id", "", "ID for this build. If empty, it looks for a /yourbase file with a build ID otherwise it creates one with a random build ID. Once a build ID is determined, skipper spawns a child process of itself but passing --id <id> accordingly")
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.PersistentFlags().StringVar(&graphFileFlag, "dep-graph", "/base-graph.gz", "build graph from the base build")
+	rootCmd.PersistentFlags().StringVar(&changesFileFlag, "changes", "/changes", "changes to the current repo compared to the base build")
 }
 
 // initConfig reads in config file and ENV variables if set.
