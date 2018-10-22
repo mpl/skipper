@@ -156,7 +156,6 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 		}
 
 		step, _, node := StepFromSkipperArgs(rr[0]), rr[1], rr[2]
-		fmt.Printf("%q == %q ?\n", step, stepName)
 		if step != stepName {
 			continue
 		}
@@ -166,7 +165,6 @@ func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepNa
 			// Requires tracking the cwd of processes in the
 			// buildsnoop.
 			if strings.HasPrefix(f, node) {
-				fmt.Println("prefix", f, node)
 				return true, nil
 			}
 		}
