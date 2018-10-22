@@ -272,15 +272,16 @@ func newStepSkipper(logFile string, upFile string) (*stepSkipper, error) {
 }
 
 func (s *stepSkipper) shouldRun(stepName string) (bool, error) {
-	// TODO(nictuku): We can make this faster by traversing the graph with all files at once.
-	for f, _ := range s.updatedNodes {
-		depends, err := s.depGraph.StepDependsOnFile(stepName, f)
-		if err != nil {
-			return true, err
-		}
-		if depends {
-			return true, nil
-		}
+	updatedFiles := []string{}
+	for f := range s.updatedNodes {
+		updatedFiles = append(updatedFiles, f)
+	}
+	depends, err := s.depGraph.StepDependsOnFiles(stepName, updatedFiles)
+	if err != nil {
+		return true, err
+	}
+	if depends {
+		return true, nil
 	}
 	return false, nil
 }

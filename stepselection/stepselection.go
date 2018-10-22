@@ -17,6 +17,7 @@ func StepFromSkipperArgs(s string) string {
 }
 
 type step struct {
+	name      string // for debugging
 	readFiles map[string]bool
 }
 
@@ -52,7 +53,7 @@ func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 		stepName, mode, node := StepFromSkipperArgs(rr[0]), rr[1], rr[2]
 		s, ok := g.steps[stepName]
 		if !ok {
-			s = &step{readFiles: map[string]bool{}}
+			s = &step{readFiles: map[string]bool{}, name: stepName}
 		}
 		if mode == "R" {
 			s.readFiles[node] = true
@@ -80,9 +81,9 @@ func (g *DependencyGraph) fileDeps(filePath string) []string {
 	return files
 }
 
-// StepDependsOnFile returns true if the stepName depends on filePath, directly
+// StepDependsOnFile returns true if the stepName depends on changedFiles, directly
 // or indirectly.
-func (g *DependencyGraph) StepDependsOnFile(stepName string, filePath string) (bool, error) {
+func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []string) (bool, error) {
 	// Assume the following build log in format "StepName, FilePath, Mode":
 	// step1,F1,R
 	// step1,F2,W
@@ -112,12 +113,14 @@ func (g *DependencyGraph) StepDependsOnFile(stepName string, filePath string) (b
 		return false, fmt.Errorf("unknown step: %v", stepName)
 	}
 	for f := range step.readFiles {
-		if f == filePath {
-			return true, nil
-		}
-		for _, f2 := range g.fileDeps(f) {
-			if f2 == filePath {
+		for _, filePath := range changedFiles {
+			if f == filePath {
 				return true, nil
+			}
+			for _, f2 := range g.fileDeps(f) {
+				if f2 == filePath {
+					return true, nil
+				}
 			}
 		}
 	}
