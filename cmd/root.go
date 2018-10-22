@@ -21,8 +21,8 @@ import (
 )
 
 var (
-	cfgFile string
-	buildID string
+	cfgFileFlag string
+	buildIDFlag string
 )
 
 // Skipper needs to be run with a --id <buildId>. If that flag wasn't set, we spawn a child skipper process with that flag.
@@ -94,7 +94,7 @@ var rootCmd = &cobra.Command{
 		// and refusing to call skipper again if the parent process is
 		// already a skipper. I don't expect that to happen unless we
 		// mess-up on the flag-passing + flag-parsing logic.
-		if buildID == "" {
+		if buildIDFlag == "" {
 			parentSkipper = true
 			// TODO: Inspect /yourbase file first. Also update it otherwise.
 			id, err := buildULIDFromFile()
@@ -174,16 +174,16 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.skipper.yaml)")
-	rootCmd.PersistentFlags().StringVar(&buildID, "id", "", "ID for this build. If empty, it looks for a /yourbase file with a build ID otherwise it creates one with a random build ID. Once a build ID is determined, skipper spawns a child process of itself but passing --id <id> accordingly")
+	rootCmd.PersistentFlags().StringVar(&cfgFileFlag, "config", "", "config file (default is $HOME/.skipper.yaml)")
+	rootCmd.PersistentFlags().StringVar(&buildIDFlag, "id", "", "ID for this build. If empty, it looks for a /yourbase file with a build ID otherwise it creates one with a random build ID. Once a build ID is determined, skipper spawns a child process of itself but passing --id <id> accordingly")
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
-	if cfgFile != "" {
+	if cfgFileFlag != "" {
 		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
+		viper.SetConfigFile(cfgFileFlag)
 	} else {
 		// Find home directory.
 		home, err := homedir.Dir()
@@ -228,6 +228,7 @@ type stepSkipper struct {
 	buildLog     io.ReadCloser
 	buildReport  *csv.Reader
 	updatedNodes map[string]bool
+	depGraph     *stepselection.DependencyGraph
 }
 
 func (s *stepSkipper) Close() {
@@ -250,13 +251,28 @@ func newStepSkipper(logFile string, upFile string) (*stepSkipper, error) {
 	if err != nil {
 		return nil, err
 	}
+	depGraph, err := stepselection.NewDependencyGraph(buildReport)
+	if err != nil {
+		return nil, err
+	}
 	return &stepSkipper{
 		buildLog:     buildLog,
 		buildReport:  buildReport,
 		updatedNodes: updatedNodes,
+		depGraph:     depGraph,
 	}, nil
 }
 
 func (s *stepSkipper) shouldRun(stepName string) (bool, error) {
-	return stepselection.ShouldRunStep(s.buildReport, s.updatedNodes, stepName)
+	// TODO(nictuku): We can make this faster by traversing the graph with all files at once.
+	for f, _ := range s.updatedNodes {
+		depends, err := s.depGraph.StepDependsOnFile(stepName, f)
+		if err != nil {
+			return true, err
+		}
+		if depends {
+			return true, nil
+		}
+	}
+	return false, nil
 }
