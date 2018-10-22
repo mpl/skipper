@@ -21,6 +21,10 @@ type step struct {
 	readFiles map[string]bool
 }
 
+var ignoreFiles = map[string]bool{
+	"/dev/null": true,
+}
+
 type DependencyGraph struct {
 	steps       map[string]*step
 	fileWriters map[string][]*step
@@ -71,6 +75,9 @@ func (g *DependencyGraph) String() string {
 }
 
 func (g *DependencyGraph) fileDeps(filePath string) []string {
+	if _, ok := ignoreFiles[filePath]; ok {
+		return nil
+	}
 	var files []string
 	for _, step := range g.fileWriters[filePath] {
 		for file := range step.readFiles {
