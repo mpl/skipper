@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var re = regexp.MustCompile("^skipper (?:--id [^ ]+ )?-- ")
@@ -39,7 +40,7 @@ func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 		rr  []string
 		err error
 	)
-
+	start := time.Now()
 	for {
 		rr, err = buildReport.Read()
 		if err != nil {
@@ -67,6 +68,7 @@ func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 		// fmt.Println("step", s, stepName)
 		g.steps[stepName] = s
 	}
+	fmt.Println("dep graph build time:", time.Since(start))
 	return g, nil
 }
 
@@ -74,15 +76,36 @@ func (g *DependencyGraph) String() string {
 	return fmt.Sprintf("graph with %d steps", len(g.steps))
 }
 
-func (g *DependencyGraph) fileDeps(filePath string) []string {
+type lookupState struct {
+	stepChecked map[string]bool
+}
+
+func (g *DependencyGraph) fileDeps(s *lookupState, filePath string) []string {
 	if _, ok := ignoreFiles[filePath]; ok {
 		return nil
 	}
 	var files []string
+	fmt.Printf("\tfileDeps(%v)\n", filePath)
 	for _, step := range g.fileWriters[filePath] {
+		fmt.Printf("\t\tdepends on step %q (step writes to %v)\n", step.name, filePath)
+		// Note that the original filePath is irrelevant from here on,
+		// so we can cache the step dependencies as a whole,
+		// independently of which file is being checked.
+		if s.stepChecked[step.name] {
+			// This step and its dependencies have been checked.
+			// Either they don't have any relevant file reads, or
+			// it's already marked to be checked.
+			// fmt.Printf("\t\t\tstep %q, skipped\n", step.name)
+			continue
+		}
+		s.stepChecked[step.name] = true
 		for file := range step.readFiles {
+			if file == filePath {
+				continue
+			}
+			fmt.Printf("\t\t\tstep %q, readFiles %v\n", step.name, file)
 			files = append(files, file)
-			files = append(files, g.fileDeps(file)...)
+			files = append(files, g.fileDeps(s, file)...)
 		}
 	}
 	return files
@@ -119,12 +142,15 @@ func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []str
 	if !ok {
 		return false, fmt.Errorf("unknown step: %v", stepName)
 	}
+	fmt.Printf("=> step %q\n", step.name)
+	s := &lookupState{stepChecked: map[string]bool{}} // TODO(nictuku): Remove this if it remains unused.
 	for f := range step.readFiles {
+		fmt.Printf("\tstep %q -> %v\n", step.name, f)
 		for _, filePath := range changedFiles {
 			if f == filePath {
 				return true, nil
 			}
-			for _, f2 := range g.fileDeps(f) {
+			for _, f2 := range g.fileDeps(s, f) {
 				if f2 == filePath {
 					return true, nil
 				}
