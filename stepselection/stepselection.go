@@ -145,7 +145,7 @@ func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []str
 		return false, "", fmt.Errorf("unknown step: %v", stepName)
 	}
 	fmt.Printf("=> step %q\n", step.name)
-	s := &lookupState{stepChecked: map[string]bool{}} // TODO(nictuku): Remove this if it remains unused.
+	s := &lookupState{stepChecked: map[string]bool{}}
 	for stepReadFile := range step.readFiles {
 		fmt.Printf("\tstep %q -> %v\n", step.name, stepReadFile)
 		for _, changedFile := range changedFiles {
@@ -153,9 +153,9 @@ func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []str
 				return true, fmt.Sprintf("step %q reads file %q which is being updated", step.name, stepReadFile), nil
 			}
 		}
-		for _, f2 := range g.fileDeps(s, stepReadFile) {
+		for _, transitiveDep := range g.fileDeps(s, stepReadFile) {
 			for _, changedFile := range changedFiles {
-				if f2 == changedFile {
+				if transitiveDep == changedFile {
 					return true, fmt.Sprintf("step %q has a dependency that uses %q", step.name, changedFile), nil
 				}
 			}
