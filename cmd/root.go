@@ -282,7 +282,7 @@ func (s *stepSkipper) shouldRun(stepName string) (bool, error) {
 	}
 	if depends {
 		// TODO: move this to the calling func?
-		fmt.Println(stepName, reason)
+		fmt.Println("skipper:", reason)
 		return true, nil
 	}
 	return false, nil

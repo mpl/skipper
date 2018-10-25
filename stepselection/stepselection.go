@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// TODO(nictuku): make this a flag?
+const debug = false
+
 var re = regexp.MustCompile("^skipper (?:--id [^ ]+ )?-- ")
 
 func StepFromSkipperArgs(s string) string {
@@ -85,9 +88,13 @@ func (g *DependencyGraph) fileDeps(s *lookupState, filePath string) []string {
 		return nil
 	}
 	var files []string
-	fmt.Printf("\tfileDeps(%v)\n", filePath)
+	if debug {
+		fmt.Printf("\tfileDeps(%v)\n", filePath)
+	}
 	for _, step := range g.fileWriters[filePath] {
-		fmt.Printf("\t\tdepends on step %q (step writes to %v)\n", step.name, filePath)
+		if debug {
+			fmt.Printf("\t\tdepends on step %q (step writes to %v)\n", step.name, filePath)
+		}
 		// Note that the original filePath is irrelevant from here on,
 		// so we can cache the step dependencies as a whole,
 		// independently of which file is being checked.
@@ -103,7 +110,9 @@ func (g *DependencyGraph) fileDeps(s *lookupState, filePath string) []string {
 			if file == filePath {
 				continue
 			}
-			fmt.Printf("\t\t\tstep %q, readFiles %v\n", step.name, file)
+			if debug {
+				fmt.Printf("\t\t\tstep %q, readFiles %v\n", step.name, file)
+			}
 			files = append(files, file)
 			files = append(files, g.fileDeps(s, file)...)
 		}
@@ -144,10 +153,14 @@ func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []str
 	if !ok {
 		return false, "", fmt.Errorf("unknown step: %v", stepName)
 	}
-	fmt.Printf("=> step %q\n", step.name)
+	if debug {
+		fmt.Printf("=> step %q\n", step.name)
+	}
 	s := &lookupState{stepChecked: map[string]bool{}}
 	for stepReadFile := range step.readFiles {
-		fmt.Printf("\tstep %q -> %v\n", step.name, stepReadFile)
+		if debug {
+			fmt.Printf("\tstep %q -> %v\n", step.name, stepReadFile)
+		}
 		for _, changedFile := range changedFiles {
 			if changedFile == stepReadFile {
 				return true, fmt.Sprintf("step %q reads file %q which is being updated", step.name, stepReadFile), nil
