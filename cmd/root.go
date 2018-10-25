@@ -276,11 +276,13 @@ func (s *stepSkipper) shouldRun(stepName string) (bool, error) {
 	for f := range s.updatedNodes {
 		updatedFiles = append(updatedFiles, f)
 	}
-	depends, err := s.depGraph.StepDependsOnFiles(stepName, updatedFiles)
+	depends, reason, err := s.depGraph.StepDependsOnFiles(stepName, updatedFiles)
 	if err != nil {
 		return true, err
 	}
 	if depends {
+		// TODO: move this to the calling func?
+		fmt.Println(stepName, reason)
 		return true, nil
 	}
 	return false, nil

@@ -111,9 +111,11 @@ func (g *DependencyGraph) fileDeps(s *lookupState, filePath string) []string {
 	return files
 }
 
-// StepDependsOnFile returns true if the stepName depends on changedFiles, directly
-// or indirectly.
-func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []string) (bool, error) {
+// StepDependsOnFile returns true if the stepName depends on changedFiles,
+// directly or indirectly. It also indicates _why_ it decided that way. The
+// returned string is for the end user's benefit. It may change at any point
+// and should not be used programmatically.
+func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []string) (bool, string, error) {
 	// Assume the following build log in format "StepName, FilePath, Mode":
 	// step1,F1,R
 	// step1,F2,W
@@ -140,24 +142,26 @@ func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []str
 
 	step, ok := g.steps[stepName]
 	if !ok {
-		return false, fmt.Errorf("unknown step: %v", stepName)
+		return false, "", fmt.Errorf("unknown step: %v", stepName)
 	}
 	fmt.Printf("=> step %q\n", step.name)
 	s := &lookupState{stepChecked: map[string]bool{}} // TODO(nictuku): Remove this if it remains unused.
-	for f := range step.readFiles {
-		fmt.Printf("\tstep %q -> %v\n", step.name, f)
-		for _, filePath := range changedFiles {
-			if f == filePath {
-				return true, nil
+	for stepReadFile := range step.readFiles {
+		fmt.Printf("\tstep %q -> %v\n", step.name, stepReadFile)
+		for _, changedFile := range changedFiles {
+			if changedFile == stepReadFile {
+				return true, fmt.Sprintf("step %q reads file %q which is being updated", step.name, stepReadFile), nil
 			}
-			for _, f2 := range g.fileDeps(s, f) {
-				if f2 == filePath {
-					return true, nil
+		}
+		for _, f2 := range g.fileDeps(s, stepReadFile) {
+			for _, changedFile := range changedFiles {
+				if f2 == changedFile {
+					return true, fmt.Sprintf("step %q has a dependency that uses %q", step.name, changedFile), nil
 				}
 			}
 		}
 	}
-	return false, nil
+	return false, "", nil
 }
 
 // TODO: This is an older, simpler implementation. To be replaced with DependencyGraph and its methods.
