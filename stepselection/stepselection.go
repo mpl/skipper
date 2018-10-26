@@ -34,6 +34,10 @@ type DependencyGraph struct {
 	fileWriters map[string][]*step
 }
 
+// NewDependencyGraph creates a DependencyGraph which can be used for looking
+// up whether a step depends on certain files. A buildReport must be provided,
+// which is currently obtained by running `stepanalysis` on a build log. The
+// buid log is the output of buildsnoop.py.
 func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 	g := &DependencyGraph{
 		steps:       map[string]*step{},
