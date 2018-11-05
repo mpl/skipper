@@ -168,6 +168,12 @@ func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []str
 	// We are using maps, but could switch to more efficient structures
 	// if/when the number of files we track becomes too large.
 
+	// TODO(nictuku): We should require all inputs to be absolute because
+	// relative paths obviously change when the cwd changes, and that's unreliable.
+	for i, f := range changedFiles {
+		changedFiles[i] = absoluteNodePath(f)
+	}
+
 	step, ok := g.steps[stepName]
 	if !ok {
 		return false, "", fmt.Errorf("unknown step: %v", stepName)
