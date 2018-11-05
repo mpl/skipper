@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -32,6 +33,20 @@ var ignoreFiles = map[string]bool{
 type DependencyGraph struct {
 	steps       map[string]*step
 	fileWriters map[string][]*step
+}
+
+func absoluteNodePath(node string) string {
+	// TODO(nictuku): Remove this when the build log is fixed to only provide full paths.
+	// This is not always correct because it relies on the current skipper working
+	// directory to be the same as when the build log was created.
+	if path.IsAbs(node) {
+		return node
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return node
+	}
+	return path.Join(cwd, node)
 }
 
 // NewDependencyGraph creates a DependencyGraph which can be used for looking
@@ -62,7 +77,7 @@ func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 			return nil, fmt.Errorf("Unexpected format for record (%#v)", rr)
 		}
 
-		stepName, mode, node := StepFromSkipperArgs(rr[0]), rr[1], rr[2]
+		stepName, mode, node := StepFromSkipperArgs(rr[0]), rr[1], absoluteNodePath(rr[2])
 		s, ok := g.steps[stepName]
 		if !ok {
 			s = &step{readFiles: map[string]bool{}, name: stepName}
