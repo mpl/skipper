@@ -2,6 +2,7 @@
 package stepselection
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -49,6 +50,33 @@ func absoluteNodePath(node string) string {
 	return path.Join(cwd, node)
 }
 
+func allSteps(steps string) ([]string, error) {
+	r := csv.NewReader(strings.NewReader(steps))
+	record, err := r.Read()
+	if err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+// walkUpStepTree runs f on each step of a step tree, identified in the build
+// report as "p1,p2,p3" etc. The name(s) of a step's ancestors are also part of
+// its name, to make it unique. So the name of the first step is `p1` and the
+// name of the last step is `p1,p2,p3`.
+func walkUpStepTree(step []string, f func(step string)) {
+	for i := range step {
+		// Proper csv encoding to escape commas and stuff inside step names.
+		b := new(bytes.Buffer)
+		w := csv.NewWriter(b)
+		//stepName := strings.Join(step[0:i+1], ",")
+		if err := w.Write(step[0 : i+1]); err != nil {
+			panic("walkUpStepTree very unexpected csv writing error: " + err.Error())
+		}
+		w.Flush()
+		f(strings.TrimSpace(b.String()))
+	}
+}
+
 // NewDependencyGraph creates a DependencyGraph which can be used for looking
 // up whether a step depends on certain files. A buildReport must be provided,
 // which is currently obtained by running `stepanalysis` on a build log. The
@@ -71,24 +99,32 @@ func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
 			}
 			// Sometimes helpful data is put in the read record
 			// even though an error happens, so we show it here.
-			return nil, fmt.Errorf("Could not parse record (%#v)", rr)
+			return nil, fmt.Errorf("could not parse record (%#v)", rr)
 		}
 		if len(rr) != 3 {
-			return nil, fmt.Errorf("Unexpected format for record (%#v)", rr)
+			return nil, fmt.Errorf("unexpected format for record (%#v)", rr)
 		}
 
-		stepName, mode, node := StepFromSkipperArgs(rr[0]), rr[1], absoluteNodePath(rr[2])
-		s, ok := g.steps[stepName]
-		if !ok {
-			s = &step{readFiles: map[string]bool{}, name: stepName}
+		stepEncoded, mode, node := StepFromSkipperArgs(rr[0]), rr[1], absoluteNodePath(rr[2])
+
+		steps, err := allSteps(stepEncoded)
+		if err != nil {
+			return nil, fmt.Errorf("could not decode step name %q: %v", stepEncoded, err)
 		}
-		if mode == "R" {
-			s.readFiles[node] = true
-		} else {
-			g.fileWriters[node] = append(g.fileWriters[node], s)
-		}
-		// fmt.Println("step", s, stepName)
-		g.steps[stepName] = s
+		walkUpStepTree(steps, func(stepName string) {
+			// We add this node to all ancestor steps to
+			// effectively make them depend on these files, too.
+			s, ok := g.steps[stepName]
+			if !ok {
+				s = &step{readFiles: map[string]bool{}, name: stepName}
+			}
+			if mode == "R" {
+				s.readFiles[node] = true
+			} else {
+				g.fileWriters[node] = append(g.fileWriters[node], s)
+			}
+			g.steps[stepName] = s
+		})
 	}
 	fmt.Println("dep graph build time:", time.Since(start))
 	return g, nil
