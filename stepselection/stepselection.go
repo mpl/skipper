@@ -2,14 +2,13 @@
 package stepselection
 
 import (
-	"bytes"
-	"encoding/csv"
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path"
 	"regexp"
-	"strings"
 	"time"
 )
 
@@ -50,30 +49,30 @@ func absoluteNodePath(node string) string {
 	return path.Join(cwd, node)
 }
 
-func allSteps(steps string) ([]string, error) {
-	r := csv.NewReader(strings.NewReader(steps))
-	record, err := r.Read()
+type CmdTree []string
+
+func (c CmdTree) Name() string {
+	b, err := json.Marshal(c)
 	if err != nil {
-		return nil, err
+		return "?"
 	}
-	return record, nil
+	return string(b)
+}
+
+type BuildLog struct {
+	CmdTree []string
+	Mode    string
+	File    string
 }
 
 // walkUpStepTree runs f on each step of a step tree, identified in the build
 // report as "p1,p2,p3" etc. The name(s) of a step's ancestors are also part of
 // its name, to make it unique. So the name of the first step is `p1` and the
 // name of the last step is `p1,p2,p3`.
-func walkUpStepTree(step []string, f func(step string)) {
+func walkUpStepTree(step CmdTree, f func(subTree CmdTree)) {
 	for i := range step {
-		// Proper csv encoding to escape commas and stuff inside step names.
-		b := new(bytes.Buffer)
-		w := csv.NewWriter(b)
-		//stepName := strings.Join(step[0:i+1], ",")
-		if err := w.Write(step[0 : i+1]); err != nil {
-			panic("walkUpStepTree very unexpected csv writing error: " + err.Error())
-		}
-		w.Flush()
-		f(strings.TrimSpace(b.String()))
+		subTree := step[0 : i+1]
+		f(subTree)
 	}
 }
 
@@ -81,50 +80,38 @@ func walkUpStepTree(step []string, f func(step string)) {
 // up whether a step depends on certain files. A buildReport must be provided,
 // which is currently obtained by running `stepanalysis` on a build log. The
 // buid log is the output of buildsnoop.py.
-func NewDependencyGraph(buildReport *csv.Reader) (*DependencyGraph, error) {
+func NewDependencyGraph(buildReport io.Reader) (*DependencyGraph, error) {
 	g := &DependencyGraph{
 		steps:       map[string]*step{},
 		fileWriters: map[string][]*step{},
 	}
-	var (
-		rr  []string
-		err error
-	)
 	start := time.Now()
-	for {
-		rr, err = buildReport.Read()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			// Sometimes helpful data is put in the read record
-			// even though an error happens, so we show it here.
-			return nil, fmt.Errorf("could not parse record (%#v)", rr)
+	scanner := bufio.NewScanner(buildReport)
+	for scanner.Scan() {
+		bog := &BuildLog{}
+		if err := json.Unmarshal(scanner.Bytes(), bog); err != nil {
+			return nil, err
 		}
-		if len(rr) != 3 {
-			return nil, fmt.Errorf("unexpected format for record (%#v)", rr)
-		}
-
-		stepEncoded, mode, node := StepFromSkipperArgs(rr[0]), rr[1], absoluteNodePath(rr[2])
-
-		steps, err := allSteps(stepEncoded)
-		if err != nil {
-			return nil, fmt.Errorf("could not decode step name %q: %v", stepEncoded, err)
-		}
-		walkUpStepTree(steps, func(stepName string) {
+		mode := bog.Mode
+		node := bog.File
+		steps := bog.CmdTree
+		walkUpStepTree(steps, func(cmdTree CmdTree) {
 			// We add this node to all ancestor steps to
 			// effectively make them depend on these files, too.
-			s, ok := g.steps[stepName]
+			s, ok := g.steps[cmdTree.Name()]
 			if !ok {
-				s = &step{readFiles: map[string]bool{}, name: stepName}
+				s = &step{readFiles: map[string]bool{}, name: cmdTree.Name()}
 			}
 			if mode == "R" {
 				s.readFiles[node] = true
 			} else {
 				g.fileWriters[node] = append(g.fileWriters[node], s)
 			}
-			g.steps[stepName] = s
+			g.steps[cmdTree.Name()] = s
 		})
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 	fmt.Println("dep graph build time:", time.Since(start))
 	return g, nil
@@ -175,11 +162,11 @@ func (g *DependencyGraph) fileDeps(s *lookupState, filePath string) []string {
 	return files
 }
 
-// StepDependsOnFile returns true if the stepName depends on changedFiles,
+// StepDependsOnFile returns true if the cmdTree depends on changedFiles,
 // directly or indirectly. It also indicates _why_ it decided that way. The
 // returned string is for the end user's benefit. It may change at any point
 // and should not be used programmatically.
-func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []string) (bool, string, error) {
+func (g *DependencyGraph) StepDependsOnFiles(cmdTree CmdTree, changedFiles []string) (bool, string, error) {
 	// Assume the following build log in format "StepName, FilePath, Mode":
 	// step1,F1,R
 	// step1,F2,W
@@ -210,9 +197,9 @@ func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []str
 		changedFiles[i] = absoluteNodePath(f)
 	}
 
-	step, ok := g.steps[stepName]
+	step, ok := g.steps[cmdTree.Name()]
 	if !ok {
-		return false, "", fmt.Errorf("unknown step: %v", stepName)
+		return false, "", fmt.Errorf("unknown step: %v", cmdTree)
 	}
 	if debug {
 		fmt.Printf("=> step %q\n", step.name)
@@ -236,59 +223,4 @@ func (g *DependencyGraph) StepDependsOnFiles(stepName string, changedFiles []str
 		}
 	}
 	return false, "", nil
-}
-
-// TODO: This is an older, simpler implementation. To be replaced with DependencyGraph and its methods.
-func ShouldRunStep(buildReport *csv.Reader, updatedNodes map[string]bool, stepName string) (bool, error) {
-	var (
-		rr  []string
-		err error
-	)
-	if len(updatedNodes) == 0 {
-		fmt.Fprintf(os.Stderr, "skipper got an empty change set\n")
-		return true, nil
-	}
-	// TODO speed: This is n^2 currently, but it could be much faster.
-
-	stepSeen := false
-	stepName = StepFromSkipperArgs(stepName)
-
-	for {
-		rr, err = buildReport.Read()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			// Sometimes helpful data is put in the read record
-			// even though an error happens, so we print it here.
-			fmt.Fprintf(os.Stderr, "Could not parse record (%#v). Falling back to running steps\n", rr)
-			return true, err
-		}
-		if len(rr) != 3 {
-			fmt.Fprintf(os.Stderr, "Unexpected format for record (%#v). Falling back to running steps\n", rr)
-			return true, nil
-		}
-
-		step, _, node := StepFromSkipperArgs(rr[0]), rr[1], rr[2]
-		if step != stepName {
-			continue
-		}
-		stepSeen = true
-		for f := range updatedNodes {
-			// TODO(nictuku): Use full paths for the check.
-			// Requires tracking the cwd of processes in the
-			// buildsnoop.
-			if strings.HasPrefix(f, node) {
-				return true, nil
-			}
-		}
-	}
-	if !stepSeen {
-		// If there are no nodes in the build graph that match with the
-		// step being checked, then it's a new step it should be run.
-		fmt.Fprintf(os.Stderr, "Step %q appears to be new. Falling back to running it\n", stepName)
-		return true, nil
-	}
-
-	return false, nil
 }
