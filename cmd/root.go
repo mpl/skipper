@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"encoding/csv"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -233,28 +232,17 @@ func updatedNodes(filePath string) (map[string]bool, error) {
 // TODO(nictuku): Move this to stepselection.
 
 type stepSkipper struct {
-	buildLog     io.ReadCloser
-	buildReport  *csv.Reader
+	buildReport  io.ReadCloser
 	updatedNodes map[string]bool
 	depGraph     *stepselection.DependencyGraph
 }
 
 func (s *stepSkipper) Close() {
-	s.buildLog.Close()
+	s.buildReport.Close()
 }
 
 func newStepSkipper(logFile string, upFile string) (*stepSkipper, error) {
-	buildLog, err := builddata.OpenFile(logFile)
-	if err != nil {
-		return nil, err
-	}
-
-	buildReport := csv.NewReader(buildLog)
-	if err != nil {
-		return nil, err
-	}
-	buildReport.LazyQuotes = true
-
+	buildReport, err := builddata.OpenFile(logFile)
 	updatedNodes, err := updatedNodes(upFile)
 	if err != nil {
 		return nil, err
@@ -264,7 +252,6 @@ func newStepSkipper(logFile string, upFile string) (*stepSkipper, error) {
 		return nil, err
 	}
 	return &stepSkipper{
-		buildLog:     buildLog,
 		buildReport:  buildReport,
 		updatedNodes: updatedNodes,
 		depGraph:     depGraph,
