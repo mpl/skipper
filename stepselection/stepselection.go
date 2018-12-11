@@ -100,7 +100,11 @@ func NewDependencyGraph(buildReport io.Reader) (*DependencyGraph, error) {
 			return nil, err
 		}
 		mode := bog.Mode
-		node := bog.File
+		// absoluteNodePath is very important here. If the graph says a
+		// process is working on file "F1", we normalize that to an
+		// absolute path based on the current path. That's not ideal,
+		// see the comment in absoluteNodePath.
+		node := absoluteNodePath(bog.File)
 		steps := bog.CmdTree
 		walkUpStepTree(steps, func(cmdTree CmdTree) {
 			// We add this node to all ancestor steps to
