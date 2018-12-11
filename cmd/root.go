@@ -84,6 +84,12 @@ func saveBuildULID(id string) error {
 	return err
 }
 
+func currentStepName(args []string) ([]string, error) {
+		// XXX missing parents
+		stepName := strings.Join(args, " ")
+		return []string{stepName}, nil
+}
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "skipper",
@@ -137,16 +143,21 @@ var rootCmd = &cobra.Command{
 			run()
 			return
 		}
+		stepName, err := currentStepName(args)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "skipper: decided to run because could not determine current step name: %v\n", err)
+			run()
+			return
+		}
 		// TODO(nictuku): is there a better moment to create this?
 		// Perhaps if the skipper becomes noticeably slow, we can move
 		// steps like this to asynchronous ones.
-		stepName := strings.Join(args, " ")
 		skipCheck, err := newStepSkipper(graphFileFlag, changesFileFlag)
 		if err != nil {
 			if os.IsNotExist(err) {
-				fmt.Printf("skipper: defaulting to running command %q because the base dependency graph is missing\n", stepName)
+				fmt.Printf("skipper: defaulting to running command %q because the base dependency graph is missing\n", args)
 			} else {
-				fmt.Fprintf(os.Stderr, "skipper: defaulting to running command %q because could not open base dependency graph: %v\n", stepName, err)
+				fmt.Fprintf(os.Stderr, "skipper: defaulting to running command %q because could not open base dependency graph: %v\n", args, err)
 			}
 			run()
 			return
@@ -258,7 +269,7 @@ func newStepSkipper(logFile string, upFile string) (*stepSkipper, error) {
 	}, nil
 }
 
-func (s *stepSkipper) shouldRun(stepName string) (bool, error) {
+func (s *stepSkipper) shouldRun(stepName []string) (bool, error) {
 	updatedFiles := []string{}
 	for f := range s.updatedNodes {
 		updatedFiles = append(updatedFiles, f)
