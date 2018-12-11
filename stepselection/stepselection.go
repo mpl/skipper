@@ -3,12 +3,14 @@ package stepselection
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -52,11 +54,16 @@ func absoluteNodePath(node string) string {
 type CmdTree []string
 
 func (c CmdTree) Name() string {
-	b, err := json.Marshal(c)
+	buf := new(bytes.Buffer)
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "")
+	err := enc.Encode(c)
 	if err != nil {
 		return "?"
 	}
-	return string(b)
+	// json.Encoder writes a new-line after each Encode, so remove it here.
+	return strings.TrimSuffix(buf.String(), "\n")
 }
 
 type BuildLog struct {
