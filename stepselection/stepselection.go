@@ -93,6 +93,9 @@ func NewDependencyGraph(buildReport io.Reader) (*DependencyGraph, error) {
 		fileWriters: map[string][]*step{},
 	}
 	start := time.Now()
+	if buildReport == nil {
+		return g, nil
+	}
 	scanner := bufio.NewScanner(buildReport)
 	for scanner.Scan() {
 		bog := &BuildLog{}
