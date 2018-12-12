@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -93,6 +94,9 @@ func NewDependencyGraph(buildReport io.Reader) (*DependencyGraph, error) {
 		fileWriters: map[string][]*step{},
 	}
 	start := time.Now()
+	if buildReport == nil {
+		return nil, errors.New("invalid build report")
+	}
 	scanner := bufio.NewScanner(buildReport)
 	for scanner.Scan() {
 		bog := &BuildLog{}

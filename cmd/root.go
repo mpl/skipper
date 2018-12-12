@@ -254,6 +254,9 @@ func (s *stepSkipper) Close() {
 
 func newStepSkipper(logFile string, upFile string) (*stepSkipper, error) {
 	buildReport, err := builddata.OpenFile(logFile)
+	if err != nil {
+		return nil, err
+	}
 	updatedNodes, err := updatedNodes(upFile)
 	if err != nil {
 		return nil, err
